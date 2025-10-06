@@ -1,31 +1,55 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Optional: Next/Vercel will parse JSON for us when header is application/json
+export const config = {
+  api: { bodyParser: true },
+};
 
 export default async function handler(req, res) {
+  // --- CORS: allow requests from your WP site (use "*" while testing) ---
+  res.setHeader('Access-Control-Allow-Origin', '*'); // or 'https://www.glowwithnoor.com'
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { email, phone, form_id, source } = req.body;
+    // req.body is already an object if Content-Type: application/json
+    const { name, email, phone, service, message, form_id, source } =
+      typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    // Use your env vars you already set
+    const from = process.env.LEAD_EMAIL_FROM || 'Noor Leads <no-reply@nooraesthetics.com>';
+    const to = process.env.LEAD_EMAIL_TO || 'karrie@glowwithnoor.com';
 
     await resend.emails.send({
-      from: 'Noor Leads <no-reply@nooraesthetics.com>',
-      to: 'karrie@glowwithinnoor.com',
-      subject: 'New Lead Submitted!',
+      from,
+      to,
+      subject: `New Lead${service ? `: ${service}` : ''}`,
       html: `
         <h2>New Lead</h2>
+        <p><strong>Name:</strong> ${name || 'N/A'}</p>
         <p><strong>Email:</strong> ${email || 'N/A'}</p>
         <p><strong>Phone:</strong> ${phone || 'N/A'}</p>
+        <p><strong>Service:</strong> ${service || 'N/A'}</p>
         <p><strong>Form ID:</strong> ${form_id || 'N/A'}</p>
         <p><strong>Source:</strong> ${source || 'N/A'}</p>
+        <p><strong>Message:</strong><br>${(message || '').toString().replace(/\n/g,'<br>')}</p>
       `,
     });
 
-    res.status(200).json({ success: true });
+    return res.status(200).json({ success: true });
   } catch (error) {
-    console.error('Error sending email:', error);
-    res.status(500).json({ error: 'Failed to send email' });
+    console.error('lead-email error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send email' });
   }
 }
