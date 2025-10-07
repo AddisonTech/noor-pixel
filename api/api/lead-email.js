@@ -1,12 +1,9 @@
 import { Resend } from 'resend';
 
-// Optional: Next/Vercel will parse JSON for us when header is application/json
-export const config = {
-  api: { bodyParser: true },
-};
+export const config = { api: { bodyParser: true } };
 
 export default async function handler(req, res) {
-  // --- CORS: allow requests from your WP site (use "*" while testing) ---
+  // --- CORS (keep * while testing; later restrict to your domain) ---
   res.setHeader('Access-Control-Allow-Origin', '*'); // or 'https://www.glowwithnoor.com'
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -21,15 +18,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // req.body is already an object if Content-Type: application/json
     const { name, email, phone, service, message, form_id, source } =
       typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
 
     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    // Use your env vars you already set
     const from = process.env.LEAD_EMAIL_FROM || 'Noor Leads <no-reply@nooraesthetics.com>';
-    const to = process.env.LEAD_EMAIL_TO || 'karrie@glowwithnoor.com';
+    const to   = process.env.LEAD_EMAIL_TO   || 'karrie@glowwithnoor.com';
 
     await resend.emails.send({
       from,
