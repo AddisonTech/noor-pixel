@@ -1,35 +1,26 @@
-// pages/api/lead-email.js
+// pages/api/lead-email.js   (or api/lead-email.js at repo root for Vercel “Other”)
 import { Resend } from "resend";
 
-// Ensure Node runtime (pages/api is Node by default)
 export const config = { api: { bodyParser: true } };
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// 1x1 GIF for GET beacon fallback
-const GIF = Buffer.from(
-  "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
-  "base64"
-);
+const GIF = Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64");
 
 // ---------- CORS ----------
 const ALLOWLIST = new Set([
   "https://www.glowwithnoor.com",
   "https://glowwithnoor.com",
-  // "http://localhost:3000", // uncomment for local testing if needed
 ]);
 
 function applyCors(req, res) {
   const origin = req.headers.origin || "";
-  const allowOrigin = ALLOWLIST.has(origin) ? origin : "*"; // fallback to * if unknown
+  const allowOrigin = ALLOWLIST.has(origin) ? origin : "*";
   res.setHeader("Access-Control-Allow-Origin", allowOrigin);
   res.setHeader("Vary", "Origin");
-
-  // Allow common methods & preflight cache
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    // WordPress/jQuery often send X-Requested-With; allow a broad set
     "Content-Type, X-Requested-With, Accept, Origin"
   );
   res.setHeader("Access-Control-Max-Age", "86400");
@@ -97,34 +88,52 @@ async function sendEmail(payload = {}) {
 export default async function handler(req, res) {
   applyCors(req, res);
 
-  // Preflight must return with CORS headers
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
+  if (req.method === "OPTIONS") return res.status(204).end();
+
+  const isDebug =
+    req.method === "GET" && (req.query?.debug === "1" || req.headers["x-debug"] === "1");
 
   try {
     if (req.method === "POST") {
-      // WordPress/jQuery sometimes send body as string
       const body =
         typeof req.body === "string"
           ? JSON.parse(req.body || "{}")
           : req.body || {};
-
-      console.log("[lead-email] POST payload keys:", Object.keys(body || {}));
+      console.log("[lead-email] POST keys:", Object.keys(body || {}));
       const id = await sendEmail(body);
       return res.status(200).json({ ok: true, id });
     }
 
     if (req.method === "GET") {
-      // GET beacon fallback
       const { name, email, phone, service, form_id, source, message } =
         req.query || {};
       console.log("[lead-email] GET beacon hit");
-      await sendEmail({ name, email, phone, service, form_id, source, message });
 
-      res.setHeader("Content-Type", "image/gif");
-      res.setHeader("Content-Length", GIF.length);
-      return res.status(200).end(GIF);
+      try {
+        const id = await sendEmail({
+          name,
+          email,
+          phone,
+          service,
+          form_id,
+          source,
+          message,
+        });
+
+        if (isDebug) return res.status(200).json({ ok: true, id });
+
+        res.setHeader("Content-Type", "image/gif");
+        res.setHeader("Content-Length", GIF.length);
+        return res.status(200).end(GIF);
+      } catch (e) {
+        // In debug mode, show the exact error text to the browser
+        if (isDebug) {
+          return res
+            .status(500)
+            .json({ ok: false, error: e?.message || "sendEmail failed" });
+        }
+        throw e; // otherwise fall through to global catch
+      }
     }
 
     return res.status(405).json({ ok: false, error: "Method not allowed" });
